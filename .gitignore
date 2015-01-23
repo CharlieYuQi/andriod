@@ -40,7 +40,5 @@ $RECYCLE.BIN/
 .AppleDesktop
 Network Trash Folder
 Temporary Items
-.apdisk
-*.class
-Weather/.settings/org.eclipse.jdt.core.prefs
+.*
 Weather/bin/*
