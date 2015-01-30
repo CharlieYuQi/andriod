@@ -3,128 +3,175 @@ package tk.yuqibit.weather;
 import java.util.ArrayList;
 import java.util.List;
 
-import tk.yuqibit.weather.bean.BaiduData;
-import tk.yuqibit.weather.bean.WeatherDataBean;
-import android.app.Activity;
-import android.content.Context;
-import android.content.SharedPreferences;
-import android.content.SharedPreferences.Editor;
+import tk.yuqibit.weather.bean.SelectCityBean;
+import android.content.Intent;
 import android.os.Bundle;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentStatePagerAdapter;
+import android.support.v4.view.ViewPager;
+import android.support.v4.view.ViewPager.OnPageChangeListener;
 import android.util.Log;
+import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.ListView;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 
 import com.baidu.location.BDLocation;
 import com.baidu.location.BDLocationListener;
 import com.baidu.location.LocationClient;
 import com.baidu.location.LocationClientOption;
 import com.baidu.location.LocationClientOption.LocationMode;
-import com.google.gson.Gson;
-import com.lidroid.xutils.HttpUtils;
+import com.lidroid.xutils.DbUtils;
 import com.lidroid.xutils.ViewUtils;
-import com.lidroid.xutils.exception.HttpException;
-import com.lidroid.xutils.http.RequestParams;
-import com.lidroid.xutils.http.ResponseInfo;
-import com.lidroid.xutils.http.callback.RequestCallBack;
-import com.lidroid.xutils.http.client.HttpRequest.HttpMethod;
+import com.lidroid.xutils.exception.DbException;
 import com.lidroid.xutils.view.annotation.ViewInject;
 
-public class MainActivity extends Activity
+public class MainActivity extends FragmentActivity
 {
+	@ViewInject(R.id.viewPager)
+	private ViewPager pager;
 
-	@ViewInject(R.id.weather_list)
-	private ListView lstWeather;
+	@ViewInject(R.id.viewGroup)
+	private LinearLayout layout;
 
-	private WeatherAdapter adapter;
-	private BaiduData data;
-
-	private List<WeatherDataBean> datas;
+	private MyAdapter mAdapter;
+	private List<SelectCityBean> citys;
 
 	private LocationClient mLocationClient;
 	private BDLocationListener myListener;
+
+	private List<ImageView> imageViews;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState)
 	{
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
+
+		Log.v("WeatherAPP", "onCreate");
+
 		ViewUtils.inject(this);
 
+		imageViews = new ArrayList<ImageView>();
 
-
-		datas = new ArrayList<WeatherDataBean>();
-		adapter = new WeatherAdapter(getApplicationContext(), datas);
-		lstWeather.setAdapter(adapter);
-
-		initLocationClient();
-		mLocationClient.start();
-
-		String city = readCity();
-		if (city != null && city.length() > 0)
+		citys = readCity();
+		mAdapter = new MyAdapter(getSupportFragmentManager());
+		pager.setAdapter(mAdapter);
+		pager.setOnPageChangeListener(new OnPageChangeListener()
 		{
-			getWeather(city);
+			@Override
+			public void onPageSelected(int arg0)
+			{
+				setTitle(citys.get(arg0).getCityName() + "天气");
+				setImageBackground(arg0);
+			}
+
+			@Override
+			public void onPageScrolled(int arg0, float arg1, int arg2)
+			{
+			}
+
+			@Override
+			public void onPageScrollStateChanged(int arg0)
+			{
+			}
+		});
+
+		if (citys == null || citys.size() == 0)
+		{
+			citys = new ArrayList<SelectCityBean>();
+			initLocationClient();
+			mLocationClient.start();
+		}
+
+		showIndicator(0);
+	}
+
+	private void showIndicator(int position)
+	{
+		layout.removeAllViews();
+		imageViews = new ArrayList<ImageView>();
+
+		pager.setCurrentItem(position);
+
+		for (int i = 0; i < citys.size(); i++)
+		{
+			ImageView imageView = new ImageView(this);
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(20, 20);
+			lp.leftMargin = 5;
+			imageView.setLayoutParams(lp);
+			imageViews.add(imageView);
+			if (i == position)
+			{
+				setTitle(citys.get(position).getCityName() + "天气");
+				imageView
+						.setBackgroundResource(R.drawable.page_indicator_focused);
+			} else
+			{
+				imageView
+						.setBackgroundResource(R.drawable.page_indicator_unfocused);
+			}
+
+			layout.addView(imageView);
 		}
 	}
 
-	private void getWeather(String city)
+	private void setImageBackground(int selectItems)
 	{
-		setTitle(city + "天气");
-		HttpUtils http = new HttpUtils();
-		RequestParams params = new RequestParams();
-		params.addQueryStringParameter("location", city);
-		params.addQueryStringParameter("output", "json");
-		params.addQueryStringParameter("ak", "YknGmxIoPugT7YrNrG955YLS");
+		for (int i = 0; i < imageViews.size(); i++)
+		{
+			if (i == selectItems)
+			{
+				imageViews.get(i).setBackgroundResource(
+						R.drawable.page_indicator_focused);
+			} else
+			{
+				imageViews.get(i).setBackgroundResource(
+						R.drawable.page_indicator_unfocused);
+			}
+		}
+	}
 
-		http.send(HttpMethod.GET,
-				"http://api.map.baidu.com/telematics/v3/weather", params,
-				new RequestCallBack<String>()
-				{
-					@Override
-					public void onSuccess(ResponseInfo<String> responseInfo)
-					{
-						String weather = responseInfo.result;
-						Gson gson = new Gson();
-						data = gson.fromJson(weather, BaiduData.class);
-
-						datas.clear();
-						datas.addAll(data.getResults().get(0).getWeather_data());
-						adapter.notifyDataSetChanged();
-
-						Log.v("onSuccess", data.toString());
-					}
-
-					@Override
-					public void onFailure(HttpException arg0, String arg1)
-					{
-						Log.v("onFailure", arg1);
-					}
-				});
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu)
+	{
+		super.onCreateOptionsMenu(menu);
+		menu.add(Menu.NONE, Menu.FIRST + 1, 0, "添加城市").setShowAsAction(
+				MenuItem.SHOW_AS_ACTION_ALWAYS);
+		return true;
 	}
 
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item)
 	{
-		// Handle action bar item clicks here. The action bar will
-		// automatically handle clicks on the Home/Up button, so long
-		// as you specify a parent activity in AndroidManifest.xml.
-		int id = item.getItemId();
-		if (id == R.id.action_settings)
+		if (item.getItemId() == Menu.FIRST + 1)
 		{
-			return true;
+			Intent intent = new Intent(getApplicationContext(),
+					ChooseCityActivity.class);
+			intent.putExtra("key", "value");
+			startActivityForResult(intent, 99);
 		}
+
 		return super.onOptionsItemSelected(item);
 	}
 
 	@Override
-	protected void onStop()
+	protected void onActivityResult(int requestCode, int resultCode, Intent data)
 	{
-		super.onStop();
-		mLocationClient.stop();
+		super.onActivityResult(requestCode, resultCode, data);
+
+		if (resultCode == RESULT_OK)
+		{
+			String city = data.getStringExtra("selectedCity");
+			addCity(city);
+		}
 	}
 
 	private void initLocationClient()
 	{
-		mLocationClient = new LocationClient(getApplicationContext());
+		mLocationClient = new LocationClient(getApplicationContext()); // 声明LocationClient类
 		myListener = new MyLocationListener();
 		LocationClientOption option = new LocationClientOption();
 		option.setLocationMode(LocationMode.Hight_Accuracy);
@@ -133,35 +180,123 @@ public class MainActivity extends Activity
 		mLocationClient.registerLocationListener(myListener);
 	}
 
+	@Override
+	protected void onStop()
+	{
+		Log.v("WeatherAPP", "onStop");
+		super.onStop();
+		if (mLocationClient != null)
+			mLocationClient.stop();
+	}
+
+	@Override
+	protected void onPause()
+	{
+		Log.v("WeatherAPP", "onPause");
+		super.onPause();
+	}
+
+	@Override
+	protected void onRestart()
+	{
+		Log.v("WeatherAPP", "onRestart");
+		super.onRestart();
+	}
+
+	@Override
+	protected void onResume()
+	{
+		Log.v("WeatherAPP", "onResume");
+		super.onResume();
+	}
+
+	@Override
+	protected void onStart()
+	{
+		Log.v("WeatherAPP", "onStart");
+		super.onStart();
+	}
+
+	@Override
+	protected void onDestroy()
+	{
+		Log.v("WeatherAPP", "onDestroy");
+		super.onDestroy();
+	}
+
 	public class MyLocationListener implements BDLocationListener
 	{
 		@Override
 		public void onReceiveLocation(BDLocation location)
 		{
 			String city = location.getCity();
-
-			String localCity = readCity();
-			if (!localCity.equals(city))
-			{
-				saveCity(city);
-				getWeather(city);
-			}
+			addCity(city);
 		}
 	}
 
-	private void saveCity(String city)
+	private void addCity(String city)
 	{
-		SharedPreferences sharedPreferences = getSharedPreferences("weather",
-				Context.MODE_PRIVATE);
-		Editor editor = sharedPreferences.edit();
-		editor.putString("city", city);
-		editor.commit();
+		SelectCityBean cityBean = new SelectCityBean();
+		cityBean.setCityName(city);
+		saveCity(cityBean);
+
+		if (citys == null)
+			citys = new ArrayList<SelectCityBean>();
+		citys.add(cityBean);
+		mAdapter.notifyDataSetChanged();
+		showIndicator(citys.size() - 1);
 	}
 
-	private String readCity()
+	private void saveCity(SelectCityBean city)
 	{
-		SharedPreferences sharedPreferences = getSharedPreferences("weather",
-				Context.MODE_PRIVATE);
-		return sharedPreferences.getString("city", "");
+		DbUtils dbUtils = WeatherApplication.getInstance().getDbUtil();
+		try
+		{
+			dbUtils.save(city);
+		} catch (DbException e)
+		{
+		}
+	}
+
+	private List<SelectCityBean> readCity()
+	{
+		DbUtils dbUtils = WeatherApplication.getInstance().getDbUtil();
+		try
+		{
+			return dbUtils.findAll(SelectCityBean.class);
+		} catch (DbException e)
+		{
+			return null;
+		}
+	}
+
+	public class MyAdapter extends FragmentStatePagerAdapter
+	{
+		public MyAdapter(FragmentManager fm)
+		{
+			super(fm);
+		}
+
+		@Override
+		public Fragment getItem(int arg0)
+		{
+			WeatherFragment fragment = new WeatherFragment();
+			fragment.setCity(citys.get(arg0).getCityName());
+			return fragment;
+		}
+
+		@Override
+		public int getItemPosition(Object object)
+		{
+			return POSITION_NONE;
+		}
+
+		@Override
+		public int getCount()
+		{
+			if (citys == null)
+				return 0;
+			return citys.size();
+		}
 	}
 }
